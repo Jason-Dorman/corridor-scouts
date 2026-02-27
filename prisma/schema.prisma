@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Transfer ────────────────────────────────────────────────────────────────
+// One row per bridge transfer event, written on initiation and updated on
+// completion. transfer_id is bridge-scoped and unique across all bridges.
+
+model Transfer {
+  id                 BigInt    @id @default(autoincrement())
+  transferId         String    @unique @map("transfer_id")
+  bridge             String
+  sourceChain        String    @map("source_chain")
+  destChain          String    @map("dest_chain")
+  asset              String
+  amount             Decimal
+  amountUsd          Decimal?  @map("amount_usd")
+  initiatedAt        DateTime  @map("initiated_at")
+  completedAt        DateTime? @map("completed_at")
+  durationSeconds    Int?      @map("duration_seconds")
+  status             String    @default("pending")
+  txHashSource       String?   @map("tx_hash_source")
+  txHashDest         String?   @map("tx_hash_dest")
+  blockInitiated     BigInt?   @map("block_initiated")
+  blockCompleted     BigInt?   @map("block_completed")
+
+  // Structural data — collected now for future analytics
+  gasPriceGwei       Decimal?  @map("gas_price_gwei")
+  transferSizeBucket String?   @map("transfer_size_bucket")
+  hourOfDay          Int?      @map("hour_of_day")
+  dayOfWeek          Int?      @map("day_of_week")
+
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([bridge, sourceChain, destChain, initiatedAt(sort: Desc)], name: "idx_transfers_corridor")
+  // Spec requires partial index WHERE status = 'pending'.
+  // Prisma does not support partial indexes — see prisma/migrations/0001_partial_indexes/migration.sql
+  @@index([status], name: "idx_transfers_status")
+  @@index([bridge, initiatedAt(sort: Desc)], name: "idx_transfers_bridge")
+  @@map("transfers")
+}
+
+// ─── PoolSnapshot ─────────────────────────────────────────────────────────────
+// Point-in-time TVL snapshot for a single bridge pool. Written every 5 minutes
+// by the pool-snapshots job.
+
+model PoolSnapshot {
+  id                 BigInt   @id @default(autoincrement())
+  poolId             String   @map("pool_id")
+  bridge             String
+  chain              String
+  asset              String
+  tvl                Decimal
+  tvlUsd             Decimal? @map("tvl_usd")
+  availableLiquidity Decimal? @map("available_liquidity")
+  utilization        Decimal?
+  recordedAt         DateTime @map("recorded_at")
+
+  @@index([poolId, recordedAt(sort: Desc)], name: "idx_pool_snapshots_pool")
+  @@index([chain, recordedAt(sort: Desc)], name: "idx_pool_snapshots_chain")
+  @@map("pool_snapshots")
+}
+
+// ─── Anomaly ──────────────────────────────────────────────────────────────────
+// Detected deviation from normal corridor behaviour. Remains open (resolvedAt
+// IS NULL) until the anomaly-detector marks it resolved.
+
+model Anomaly {
+  id          BigInt    @id @default(autoincrement())
+  anomalyType String    @map("anomaly_type")
+  corridorId  String    @map("corridor_id")
+  bridge      String
+  sourceChain String?   @map("source_chain")
+  destChain   String?   @map("dest_chain")
+  severity    String
+  detectedAt  DateTime  @map("detected_at")
+  resolvedAt  DateTime? @map("resolved_at")
+  details     Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Spec requires partial index WHERE resolved_at IS NULL.
+  // Prisma does not support partial indexes — see prisma/migrations/0001_partial_indexes/migration.sql
+  @@index([corridorId], name: "idx_anomalies_active")
+  @@map("anomalies")
+}

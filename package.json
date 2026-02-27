@@ -1,0 +1,43 @@
+{
+  "name": "corridor-scouts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --passWithNoTests",
+    "test:unit": "jest --testPathPattern=tests/unit --passWithNoTests",
+    "test:integration": "jest --testPathPattern=tests/integration --passWithNoTests"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.4.1",
+    "date-fns": "^3.6.0",
+    "ethers": "^6.11.0",
+    "ioredis": "^5.3.0",
+    "lucide-react": "^0.378.0",
+    "next": "^15",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "recharts": "^2.12.0",
+    "swr": "^2.2.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.0",
+    "@types/node": "^20.12.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@typescript-eslint/eslint-plugin": "^7.6.0",
+    "@typescript-eslint/parser": "^7.6.0",
+    "autoprefixer": "^10.4.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^15",
+    "postcss": "^8.4.0",
+    "prisma": "^7.4.1",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.4.0"
+  }
+}
