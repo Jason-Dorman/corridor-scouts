@@ -10,135 +10,74 @@
 
 ### 1.1 High-Level Architecture
 
-```
-                                    ┌─────────────────────────────────────┐
-                                    │           EXTERNAL CHAINS           │
-                                    │  ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐  │
-                                    │  │ ETH │ │ ARB │ │ OPT │ │BASE │  │
-                                    │  └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘  │
-                                    │     │      │      │      │       │
-                                    └─────┼──────┼──────┼──────┼───────┘
-                                          │      │      │      │
-                                          ▼      ▼      ▼      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                              CORRIDOR SCOUT SYSTEM                            │
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │                           DATA INGESTION LAYER                          │ │
-│  │                                                                         │ │
-│  │    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐           │ │
-│  │    │   ACROSS     │    │    CCTP      │    │  STARGATE    │           │ │
-│  │    │    SCOUT     │    │    SCOUT     │    │    SCOUT     │           │ │
-│  │    │              │    │              │    │              │           │ │
-│  │    │ • ETH        │    │ • ETH        │    │ • ETH        │           │ │
-│  │    │ • ARB        │    │ • ARB        │    │ • ARB        │           │ │
-│  │    │ • OPT        │    │ • OPT        │    │ • OPT        │           │ │
-│  │    │ • BASE       │    │ • BASE       │    │ • AVAX       │           │ │
-│  │    │ • POLY       │    │ • AVAX       │    │ • POLY       │           │ │
-│  │    └──────┬───────┘    └──────┬───────┘    └──────┬───────┘           │ │
-│  │           │                   │                   │                    │ │
-│  │           └───────────────────┼───────────────────┘                    │ │
-│  │                               │                                        │ │
-│  │                               ▼                                        │ │
-│  │                    ┌────────────────────┐                             │ │
-│  │                    │    EVENT QUEUE     │                             │ │
-│  │                    │      (Redis)       │                             │ │
-│  │                    │                    │                             │ │
-│  │                    │ • transfer:init    │                             │ │
-│  │                    │ • transfer:complete│                             │ │
-│  │                    │ • pool:snapshot    │                             │ │
-│  │                    └─────────┬──────────┘                             │ │
-│  │                              │                                        │ │
-│  └──────────────────────────────┼────────────────────────────────────────┘ │
-│                                 │                                          │
-│  ┌──────────────────────────────┼────────────────────────────────────────┐ │
-│  │                    PROCESSING LAYER                                   │ │
-│  │                              │                                        │ │
-│  │    ┌─────────────────────────┼─────────────────────────┐             │ │
-│  │    │                         ▼                         │             │ │
-│  │    │  ┌──────────────────────────────────────────────┐│             │ │
-│  │    │  │           TRANSFER PROCESSOR                 ││             │ │
-│  │    │  │                                              ││             │ │
-│  │    │  │  • Match initiations to completions          ││             │ │
-│  │    │  │  • Calculate settlement duration             ││             │ │
-│  │    │  │  • Classify by size bucket                   ││             │ │
-│  │    │  │  • Update transfer status                    ││             │ │
-│  │    │  └──────────────────────────────────────────────┘│             │ │
-│  │    │                         │                         │             │ │
-│  │    │  ┌──────────────────────┴──────────────────────┐ │             │ │
-│  │    │  │                                             │ │             │ │
-│  │    │  ▼                      ▼                      ▼ │             │ │
-│  │    │ ┌────────────┐  ┌────────────┐  ┌────────────┐  │             │ │
-│  │    │ │ FRAGILITY  │  │   IMPACT   │  │    LFV     │  │             │ │
-│  │    │ │ CALCULATOR │  │ CALCULATOR │  │ CALCULATOR │  │             │ │
-│  │    │ └────────────┘  └────────────┘  └────────────┘  │             │ │
-│  │    │                                                  │             │ │
-│  │    └──────────────────────────────────────────────────┘             │ │
-│  │                              │                                        │ │
-│  └──────────────────────────────┼────────────────────────────────────────┘ │
-│                                 │                                          │
-│  ┌──────────────────────────────┼────────────────────────────────────────┐ │
-│  │                     STORAGE LAYER                                     │ │
-│  │                              │                                        │ │
-│  │                              ▼                                        │ │
-│  │               ┌──────────────────────────────┐                       │ │
-│  │               │      POSTGRESQL (Neon)       │                       │ │
-│  │               │                              │                       │ │
-│  │               │  ┌────────────────────────┐  │                       │ │
-│  │               │  │      transfers         │  │                       │ │
-│  │               │  ├────────────────────────┤  │                       │ │
-│  │               │  │   pool_snapshots       │  │                       │ │
-│  │               │  ├────────────────────────┤  │                       │ │
-│  │               │  │      anomalies         │  │                       │ │
-│  │               │  └────────────────────────┘  │                       │ │
-│  │               │                              │                       │ │
-│  │               └──────────────────────────────┘                       │ │
-│  │                              │                                        │ │
-│  └──────────────────────────────┼────────────────────────────────────────┘ │
-│                                 │                                          │
-│  ┌──────────────────────────────┼────────────────────────────────────────┐ │
-│  │                      API LAYER                                        │ │
-│  │                              │                                        │ │
-│  │                              ▼                                        │ │
-│  │               ┌──────────────────────────────┐                       │ │
-│  │               │    Next.js API Routes        │                       │ │
-│  │               │                              │                       │ │
-│  │               │  GET /api/health             │                       │ │
-│  │               │  GET /api/flight             │                       │ │
-│  │               │  GET /api/corridors          │                       │ │
-│  │               │  GET /api/corridors/:id      │                       │ │
-│  │               │  GET /api/impact/estimate    │                       │ │
-│  │               │  GET /api/anomalies          │                       │ │
-│  │               │                              │                       │ │
-│  │               └──────────────┬───────────────┘                       │ │
-│  │                              │                                        │ │
-│  │               ┌──────────────┴───────────────┐                       │ │
-│  │               │     WebSocket Server         │                       │ │
-│  │               │   (Real-time updates)        │                       │ │
-│  │               └──────────────────────────────┘                       │ │
-│  │                              │                                        │ │
-│  └──────────────────────────────┼────────────────────────────────────────┘ │
-│                                 │                                          │
-│  ┌──────────────────────────────┼────────────────────────────────────────┐ │
-│  │                  PRESENTATION LAYER                                   │ │
-│  │                              │                                        │ │
-│  │                              ▼                                        │ │
-│  │               ┌──────────────────────────────┐                       │ │
-│  │               │    Next.js Dashboard         │                       │ │
-│  │               │                              │                       │ │
-│  │               │  ┌────────────────────────┐  │                       │ │
-│  │               │  │   HealthSummary        │  │                       │ │
-│  │               │  │   FlightVelocity       │  │                       │ │
-│  │               │  │   AlertList            │  │                       │ │
-│  │               │  │   ImpactCalculator     │  │                       │ │
-│  │               │  │   CorridorTable        │  │                       │ │
-│  │               │  └────────────────────────┘  │                       │ │
-│  │               │                              │                       │ │
-│  │               └──────────────────────────────┘                       │ │
-│  │                                                                       │ │
-│  └───────────────────────────────────────────────────────────────────────┘ │
-│                                                                            │
-└────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph External["EXTERNAL CHAINS"]
+        ETH[Ethereum]
+        ARB[Arbitrum]
+        OPT[Optimism]
+        BASE[Base]
+    end
+
+    subgraph System["CORRIDOR SCOUT SYSTEM"]
+        subgraph Ingestion["DATA INGESTION LAYER"]
+            AS[Across Scout<br/>ETH, ARB, OPT, BASE, POLY]
+            CS[CCTP Scout<br/>ETH, ARB, OPT, BASE, AVAX]
+            SS[Stargate Scout<br/>ETH, ARB, OPT, AVAX, POLY]
+        end
+
+        subgraph Queue["EVENT QUEUE"]
+            Redis[(Redis<br/>• transfer:init<br/>• transfer:complete<br/>• pool:snapshot)]
+        end
+
+        subgraph Processing["PROCESSING LAYER"]
+            TP[Transfer Processor<br/>• Match initiations to completions<br/>• Calculate settlement duration<br/>• Classify by size bucket<br/>• Update transfer status]
+            FC[Fragility Calculator]
+            IC[Impact Calculator]
+            LC[LFV Calculator]
+        end
+
+        subgraph Storage["STORAGE LAYER"]
+            DB[(PostgreSQL<br/>• transfers<br/>• pool_snapshots<br/>• anomalies)]
+        end
+
+        subgraph API["API LAYER"]
+            Routes[Next.js API Routes<br/>GET /api/health<br/>GET /api/flight<br/>GET /api/corridors<br/>GET /api/corridors/:id<br/>GET /api/impact/estimate<br/>GET /api/anomalies]
+            WS[WebSocket Server<br/>Real-time updates]
+        end
+
+        subgraph Presentation["PRESENTATION LAYER"]
+            Dashboard[Next.js Dashboard<br/>• HealthSummary<br/>• FlightVelocity<br/>• AlertList<br/>• ImpactCalculator<br/>• CorridorTable]
+        end
+    end
+
+    ETH --> AS
+    ARB --> AS
+    OPT --> AS
+    BASE --> AS
+    ETH --> CS
+    ARB --> CS
+    OPT --> CS
+    BASE --> CS
+    ETH --> SS
+    ARB --> SS
+    OPT --> SS
+
+    AS --> Redis
+    CS --> Redis
+    SS --> Redis
+
+    Redis --> TP
+    TP --> FC
+    TP --> IC
+    TP --> LC
+    TP --> DB
+    FC --> DB
+    
+    DB --> Routes
+    Routes --> WS
+    Routes --> Dashboard
+    WS --> Dashboard
 ```
 
 ---
@@ -147,180 +86,75 @@
 
 ### 2.1 Transfer Event Flow
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         TRANSFER EVENT FLOW                                   │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    autonumber
+    participant SC as Source Chain
+    participant AS as Across Scout
+    participant RQ as Redis Queue
+    participant TP as Transfer Processor
+    participant DB as Database
+    participant DC as Dest Chain
+    participant AS2 as Across Scout (dest)
 
-                    SOURCE CHAIN                    DESTINATION CHAIN
-                         │                                │
-                         │                                │
-    ┌────────────────────▼────────────────────┐          │
-    │         V3FundsDeposited Event          │          │
-    │                                         │          │
-    │  • depositId: 12345                     │          │
-    │  • inputToken: USDC                     │          │
-    │  • inputAmount: 10000000000             │          │
-    │  • destinationChainId: 42161            │          │
-    │  • depositor: 0xabc...                  │          │
-    │  • fillDeadline: 1708534800             │          │
-    └────────────────────┬────────────────────┘          │
-                         │                                │
-                         ▼                                │
-              ┌─────────────────────┐                    │
-              │    ACROSS SCOUT     │                    │
-              │                     │                    │
-              │  Parse event data   │                    │
-              │  Create TransferID  │                    │
-              │  Normalize amounts  │                    │
-              └──────────┬──────────┘                    │
-                         │                                │
-                         ▼                                │
-              ┌─────────────────────┐                    │
-              │    Redis Queue      │                    │
-              │                     │                    │
-              │  Channel:           │                    │
-              │  transfer:initiated │                    │
-              └──────────┬──────────┘                    │
-                         │                                │
-                         ▼                                │
-              ┌─────────────────────┐                    │
-              │ TRANSFER PROCESSOR  │                    │
-              │                     │                    │
-              │  Insert to DB       │                    │
-              │  Status: 'pending'  │                    │
-              │  Add to pending map │                    │
-              └──────────┬──────────┘                    │
-                         │                                │
-                         │                                │
-                         │  ╔═══════════════════════╗    │
-                         │  ║   TIME PASSES...      ║    │
-                         │  ║   (~3-5 minutes)      ║    │
-                         │  ╚═══════════════════════╝    │
-                         │                                │
-                         │    ┌───────────────────────────▼───────────────────┐
-                         │    │         FilledV3Relay Event                   │
-                         │    │                                               │
-                         │    │  • depositId: 12345                           │
-                         │    │  • originChainId: 1                           │
-                         │    │  • relayer: 0xdef...                          │
-                         │    │  • outputAmount: 9995000000                   │
-                         │    └───────────────────────────┬───────────────────┘
-                         │                                │
-                         │                                ▼
-                         │                     ┌─────────────────────┐
-                         │                     │    ACROSS SCOUT     │
-                         │                     │    (dest chain)     │
-                         │                     └──────────┬──────────┘
-                         │                                │
-                         │                                ▼
-                         │                     ┌─────────────────────┐
-                         │                     │    Redis Queue      │
-                         │                     │                     │
-                         │                     │  Channel:           │
-                         │                     │  transfer:completed │
-                         │                     └──────────┬──────────┘
-                         │                                │
-                         └────────────────────────────────┤
-                                                          │
-                                                          ▼
-                                              ┌─────────────────────┐
-                                              │ TRANSFER PROCESSOR  │
-                                              │                     │
-                                              │  Match to pending   │
-                                              │  Calculate duration │
-                                              │  Update DB status   │
-                                              │  Status: 'completed'│
-                                              └──────────┬──────────┘
-                                                          │
-                                                          ▼
-                                              ┌─────────────────────┐
-                                              │     DATABASE        │
-                                              │                     │
-                                              │  transfers table:   │
-                                              │  • completed_at SET │
-                                              │  • duration: 210s   │
-                                              │  • status: complete │
-                                              └─────────────────────┘
+    Note over SC: User initiates transfer
+    
+    SC->>AS: V3FundsDeposited Event<br/>depositId: 12345<br/>inputToken: USDC<br/>inputAmount: 10000000000<br/>destinationChainId: 42161
+    AS->>AS: Parse event data<br/>Create TransferID<br/>Normalize amounts
+    AS->>RQ: Publish to transfer:initiated
+    RQ->>TP: Consume event
+    TP->>DB: INSERT transfer<br/>status: 'pending'
+    TP->>TP: Add to pending map
+
+    Note over SC,DC: ⏱️ Time passes (~3-5 minutes)
+
+    DC->>AS2: FilledV3Relay Event<br/>depositId: 12345<br/>originChainId: 1<br/>relayer: 0xdef...<br/>outputAmount: 9995000000
+    AS2->>RQ: Publish to transfer:completed
+    RQ->>TP: Consume event
+    TP->>TP: Match to pending transfer<br/>Calculate duration
+    TP->>DB: UPDATE transfer<br/>completed_at: now<br/>duration: 210s<br/>status: 'completed'
 ```
 
 ### 2.2 Calculation Flow
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         CALCULATION FLOW                                      │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Triggers["SCHEDULED TRIGGERS"]
+        T1[Every 1m<br/>Stuck Check]
+        T2[Every 5m<br/>Pool Snapshot]
+        T3[Every 15m<br/>Anomaly Scan]
+    end
 
-     ┌─────────────────────────────────────────────────────────────────────────┐
-     │                        SCHEDULED TRIGGERS                                │
-     │                                                                         │
-     │    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐               │
-     │    │  Every 1m   │    │  Every 5m   │    │ Every 15m   │               │
-     │    │ Stuck Check │    │Pool Snapshot│    │ Anomaly Scan│               │
-     │    └──────┬──────┘    └──────┬──────┘    └──────┬──────┘               │
-     │           │                  │                  │                       │
-     └───────────┼──────────────────┼──────────────────┼───────────────────────┘
-                 │                  │                  │
-                 ▼                  ▼                  ▼
-     ┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
-     │   STUCK DETECTOR  │ │  POOL PROCESSOR   │ │ ANOMALY DETECTOR  │
-     │                   │ │                   │ │                   │
-     │ Query pending     │ │ Fetch on-chain    │ │ Query recent      │
-     │ transfers older   │ │ pool TVL for      │ │ transfers for:    │
-     │ than threshold    │ │ each bridge/chain │ │ • Latency spikes  │
-     │                   │ │                   │ │ • Failure clusters│
-     │ Mark as 'stuck'   │ │ Calculate         │ │ • Liquidity drops │
-     │ Create anomaly    │ │ utilization       │ │                   │
-     └─────────┬─────────┘ └─────────┬─────────┘ └─────────┬─────────┘
-               │                     │                     │
-               │                     ▼                     │
-               │           ┌───────────────────┐           │
-               │           │    FRAGILITY      │           │
-               │           │   CALCULATOR      │           │
-               │           │                   │           │
-               │           │ Inputs:           │           │
-               │           │ • utilization     │           │
-               │           │ • tvl_usd         │           │
-               │           │ • net_flow_24h    │           │
-               │           │                   │           │
-               │           │ Output:           │           │
-               │           │ • level (L/M/H)   │           │
-               │           │ • reason          │           │
-               │           └─────────┬─────────┘           │
-               │                     │                     │
-               ▼                     ▼                     ▼
-     ┌─────────────────────────────────────────────────────────────────┐
-     │                         DATABASE                                 │
-     │                                                                 │
-     │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐       │
-     │  │  transfers    │  │pool_snapshots │  │  anomalies    │       │
-     │  │               │  │               │  │               │       │
-     │  │ status:stuck  │  │ tvl, util,    │  │ type, sev,    │       │
-     │  │               │  │ fragility     │  │ corridor_id   │       │
-     │  └───────────────┘  └───────────────┘  └───────────────┘       │
-     │                                                                 │
-     └─────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-     ┌─────────────────────────────────────────────────────────────────┐
-     │                     LFV CALCULATOR                              │
-     │                  (On-demand for API)                            │
-     │                                                                 │
-     │  Input: chain (e.g., "base")                                   │
-     │                                                                 │
-     │  1. Get current pool snapshots for chain                       │
-     │  2. Get snapshots from 24h ago                                 │
-     │  3. Calculate: lfv = (tvl_now - tvl_start) / tvl_start         │
-     │  4. Classify: rapid_flight | moderate_outflow | stable | ...   │
-     │                                                                 │
-     │  Output:                                                        │
-     │  {                                                              │
-     │    chain: "base",                                               │
-     │    lfv24h: -0.082,                                             │
-     │    interpretation: "rapid_flight",                             │
-     │    netFlowUsd: -45000000                                       │
-     │  }                                                              │
-     └─────────────────────────────────────────────────────────────────┘
+    subgraph Processors["PROCESSORS"]
+        SD[Stuck Detector<br/>Query pending transfers<br/>older than threshold<br/>Mark as 'stuck'<br/>Create anomaly]
+        PP[Pool Processor<br/>Fetch on-chain pool TVL<br/>Calculate utilization]
+        AD[Anomaly Detector<br/>Query recent transfers for:<br/>• Latency spikes<br/>• Failure clusters<br/>• Liquidity drops]
+    end
+
+    subgraph Calculators["CALCULATORS"]
+        FC[Fragility Calculator<br/>Inputs: utilization, tvl_usd, net_flow_24h<br/>Output: level L/M/H, reason]
+    end
+
+    subgraph Storage["DATABASE"]
+        DB[(PostgreSQL<br/>transfers<br/>pool_snapshots<br/>anomalies)]
+    end
+
+    subgraph OnDemand["ON-DEMAND (API)"]
+        LFV[LFV Calculator<br/>Input: chain<br/>1. Get current pool snapshots<br/>2. Get snapshots from 24h ago<br/>3. Calculate lfv = delta/start<br/>4. Classify interpretation]
+    end
+
+    T1 --> SD
+    T2 --> PP
+    T3 --> AD
+
+    SD --> DB
+    PP --> FC
+    PP --> DB
+    FC --> DB
+    AD --> DB
+
+    DB --> LFV
+    LFV --> |"Output: {chain, lfv24h, interpretation, netFlowUsd}"| API[API Response]
 ```
 
 ---
@@ -329,90 +163,68 @@
 
 ### 3.1 Entity Relationship Diagram
 
+```mermaid
+erDiagram
+    TRANSFERS {
+        bigserial id PK
+        text transfer_id UK "NOT NULL"
+        text bridge "NOT NULL"
+        text source_chain "NOT NULL"
+        text dest_chain "NOT NULL"
+        text asset "NOT NULL"
+        numeric amount "NOT NULL"
+        numeric amount_usd
+        timestamptz initiated_at "NOT NULL"
+        timestamptz completed_at
+        integer duration_seconds
+        text status "DEFAULT 'pending'"
+        text tx_hash_source
+        text tx_hash_dest
+        bigint block_initiated
+        bigint block_completed
+        numeric gas_price_gwei
+        text transfer_size_bucket
+        integer hour_of_day "0-23"
+        integer day_of_week "0-6"
+        timestamptz created_at "DEFAULT NOW()"
+        timestamptz updated_at "DEFAULT NOW()"
+    }
+
+    POOL_SNAPSHOTS {
+        bigserial id PK
+        text pool_id "NOT NULL"
+        text bridge "NOT NULL"
+        text chain "NOT NULL"
+        text asset "NOT NULL"
+        numeric tvl "NOT NULL"
+        numeric tvl_usd
+        numeric available_liquidity
+        numeric utilization "0-100"
+        timestamptz recorded_at "NOT NULL"
+    }
+
+    ANOMALIES {
+        bigserial id PK
+        text anomaly_type "NOT NULL (latency_spike, failure_cluster, liquidity_drop, stuck_transfer)"
+        text corridor_id "NOT NULL"
+        text bridge "NOT NULL"
+        text source_chain
+        text dest_chain
+        text severity "NOT NULL (low, medium, high)"
+        timestamptz detected_at "NOT NULL"
+        timestamptz resolved_at
+        jsonb details
+        timestamptz created_at "DEFAULT NOW()"
+    }
+
+    TRANSFERS ||--o{ ANOMALIES : "triggers"
+    POOL_SNAPSHOTS ||--o{ ANOMALIES : "triggers"
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                        DATABASE SCHEMA                                        │
-└──────────────────────────────────────────────────────────────────────────────┘
 
-     ┌───────────────────────────────────────────────────────────────────────┐
-     │                           TRANSFERS                                    │
-     ├───────────────────────────────────────────────────────────────────────┤
-     │  id              BIGSERIAL      PK                                    │
-     │  transfer_id     TEXT           NOT NULL, UNIQUE                      │
-     │  bridge          TEXT           NOT NULL   ──────┐                    │
-     │  source_chain    TEXT           NOT NULL         │                    │
-     │  dest_chain      TEXT           NOT NULL         │                    │
-     │  asset           TEXT           NOT NULL         │                    │
-     │  amount          NUMERIC        NOT NULL         │                    │
-     │  amount_usd      NUMERIC                         │                    │
-     │  initiated_at    TIMESTAMPTZ    NOT NULL         │                    │
-     │  completed_at    TIMESTAMPTZ                     │                    │
-     │  duration_seconds INTEGER                        │                    │
-     │  status          TEXT           DEFAULT 'pending'│                    │
-     │  tx_hash_source  TEXT                            │                    │
-     │  tx_hash_dest    TEXT                            │                    │
-     │  block_initiated BIGINT                          │                    │
-     │  block_completed BIGINT                          │                    │
-     │  gas_price_gwei  NUMERIC                         │                    │
-     │  transfer_size   TEXT           -- bucket        │                    │
-     │  hour_of_day     INTEGER        -- 0-23          │                    │
-     │  day_of_week     INTEGER        -- 0-6           │                    │
-     │  created_at      TIMESTAMPTZ    DEFAULT NOW()    │                    │
-     │  updated_at      TIMESTAMPTZ    DEFAULT NOW()    │                    │
-     │                                                   │                    │
-     │  INDEXES:                                         │                    │
-     │  • (bridge, source_chain, dest_chain, initiated_at DESC)              │
-     │  • (status) WHERE status = 'pending'             │                    │
-     │  • (bridge, initiated_at DESC)                   │                    │
-     └───────────────────────────────────────────────────┼────────────────────┘
-                                                         │
-                                                         │ bridge
-                                                         │
-     ┌───────────────────────────────────────────────────┼────────────────────┐
-     │                       POOL_SNAPSHOTS              │                    │
-     ├───────────────────────────────────────────────────┼────────────────────┤
-     │  id              BIGSERIAL      PK               │                    │
-     │  pool_id         TEXT           NOT NULL   ◄─────┘                    │
-     │  bridge          TEXT           NOT NULL                              │
-     │  chain           TEXT           NOT NULL                              │
-     │  asset           TEXT           NOT NULL                              │
-     │  tvl             NUMERIC        NOT NULL                              │
-     │  tvl_usd         NUMERIC                                              │
-     │  available_liq   NUMERIC                                              │
-     │  utilization     NUMERIC        -- 0-100                              │
-     │  recorded_at     TIMESTAMPTZ    NOT NULL                              │
-     │                                                                       │
-     │  INDEXES:                                                             │
-     │  • (pool_id, recorded_at DESC)                                        │
-     │  • (chain, recorded_at DESC)                                          │
-     └───────────────────────────────────────────────────────────────────────┘
-
-
-     ┌───────────────────────────────────────────────────────────────────────┐
-     │                          ANOMALIES                                    │
-     ├───────────────────────────────────────────────────────────────────────┤
-     │  id              BIGSERIAL      PK                                    │
-     │  anomaly_type    TEXT           NOT NULL                              │
-     │                                  -- 'latency_spike'                   │
-     │                                  -- 'failure_cluster'                 │
-     │                                  -- 'liquidity_drop'                  │
-     │                                  -- 'stuck_transfer'                  │
-     │  corridor_id     TEXT           NOT NULL                              │
-     │  bridge          TEXT           NOT NULL                              │
-     │  source_chain    TEXT                                                 │
-     │  dest_chain      TEXT                                                 │
-     │  severity        TEXT           NOT NULL                              │
-     │                                  -- 'low' | 'medium' | 'high'         │
-     │  detected_at     TIMESTAMPTZ    NOT NULL                              │
-     │  resolved_at     TIMESTAMPTZ                                          │
-     │  details         JSONB                                                │
-     │  created_at      TIMESTAMPTZ    DEFAULT NOW()                         │
-     │                                                                       │
-     │  INDEXES:                                                             │
-     │  • (corridor_id) WHERE resolved_at IS NULL                            │
-     │  • (detected_at DESC)                                                 │
-     └───────────────────────────────────────────────────────────────────────┘
-```
+**Indexes:**
+- `transfers`: (bridge, source_chain, dest_chain, initiated_at DESC), (status) WHERE status = 'pending', (bridge, initiated_at DESC)
+- `pool_snapshots`: (pool_id, recorded_at DESC), (chain, recorded_at DESC)
+- `anomalies`: (corridor_id) WHERE resolved_at IS NULL, (detected_at DESC)
 
 ### 3.2 Prisma Schema
 
@@ -500,141 +312,98 @@ model Anomaly {
 
 ### 4.1 Scout Component Pattern
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         SCOUT ARCHITECTURE                                    │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+classDiagram
+    class BaseScout {
+        <<abstract>>
+        #rpcProvider: Provider
+        #redis: RedisClient
+        #chains: ChainConfig[]
+        #isRunning: boolean
+        +start()* Promise~void~
+        +stop()* Promise~void~
+        #parseEvent(log)* Event
+        #emit(event) void
+        #getTransferId() string
+        #normalizeAmount() bigint
+    }
 
-                         ┌─────────────────────────────┐
-                         │       BaseScout             │
-                         │        (Abstract)           │
-                         ├─────────────────────────────┤
-                         │                             │
-                         │  Properties:                │
-                         │  - rpcProvider: Provider    │
-                         │  - redis: RedisClient       │
-                         │  - chains: ChainConfig[]    │
-                         │  - isRunning: boolean       │
-                         │                             │
-                         │  Abstract Methods:          │
-                         │  - start(): Promise<void>   │
-                         │  - stop(): Promise<void>    │
-                         │  - parseEvent(log): Event   │
-                         │                             │
-                         │  Protected Methods:         │
-                         │  - emit(event): void        │
-                         │  - getTransferId(): string  │
-                         │  - normalizeAmount(): bigint│
-                         │                             │
-                         └──────────────┬──────────────┘
-                                        │
-                    ┌───────────────────┼───────────────────┐
-                    │                   │                   │
-                    ▼                   ▼                   ▼
-        ┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
-        │   AcrossScout     │ │    CCTPScout      │ │  StargateScout    │
-        ├───────────────────┤ ├───────────────────┤ ├───────────────────┤
-        │                   │ │                   │ │                   │
-        │ Contract:         │ │ Contract:         │ │ Contract:         │
-        │ SpokePool         │ │ TokenMessenger    │ │ Router            │
-        │                   │ │ MessageTransmitter│ │ Pool              │
-        │                   │ │                   │ │                   │
-        │ Events:           │ │ Events:           │ │ Events:           │
-        │ • V3FundsDeposited│ │ • DepositForBurn  │ │ • Swap            │
-        │ • FilledV3Relay   │ │ • MessageReceived │ │                   │
-        │                   │ │                   │ │                   │
-        │ Chains:           │ │ Chains:           │ │ Chains:           │
-        │ ETH,ARB,OPT,BASE  │ │ ETH,ARB,OPT,BASE  │ │ ETH,ARB,OPT,AVAX  │
-        │                   │ │ AVAX              │ │ POLY              │
-        │                   │ │                   │ │                   │
-        │ TransferId:       │ │ TransferId:       │ │ TransferId:       │
-        │ {origin}_{depId}  │ │ {source}_{nonce}  │ │ {chainId}_{txHash}│
-        │                   │ │                   │ │                   │
-        └───────────────────┘ └───────────────────┘ └───────────────────┘
+    class AcrossScout {
+        Contract: SpokePool
+        Events: V3FundsDeposited, FilledV3Relay
+        Chains: ETH, ARB, OPT, BASE
+        TransferId: origin_depositId
+        +start() Promise~void~
+        +stop() Promise~void~
+        #parseEvent(log) Event
+    }
+
+    class CCTPScout {
+        Contract: TokenMessenger, MessageTransmitter
+        Events: DepositForBurn, MessageReceived
+        Chains: ETH, ARB, OPT, BASE, AVAX
+        TransferId: source_nonce
+        +start() Promise~void~
+        +stop() Promise~void~
+        #parseEvent(log) Event
+    }
+
+    class StargateScout {
+        Contract: Router, Pool
+        Events: Swap
+        Chains: ETH, ARB, OPT, AVAX, POLY
+        TransferId: chainId_txHash
+        +start() Promise~void~
+        +stop() Promise~void~
+        #parseEvent(log) Event
+    }
+
+    BaseScout <|-- AcrossScout
+    BaseScout <|-- CCTPScout
+    BaseScout <|-- StargateScout
 ```
 
 ### 4.2 API Route Structure
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         API ROUTE ARCHITECTURE                                │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph API["src/app/api/"]
+        subgraph Health["health/"]
+            H[route.ts<br/>GET /api/health]
+        end
+        
+        subgraph Flight["flight/"]
+            F[route.ts<br/>GET /api/flight]
+        end
+        
+        subgraph Corridors["corridors/"]
+            C1[route.ts<br/>GET /api/corridors]
+            subgraph CorridorID["[id]/"]
+                C2[route.ts<br/>GET /api/corridors/:id]
+            end
+        end
+        
+        subgraph Impact["impact/"]
+            subgraph Estimate["estimate/"]
+                I[route.ts<br/>GET /api/impact/estimate]
+            end
+        end
+        
+        subgraph Anomalies["anomalies/"]
+            A[route.ts<br/>GET /api/anomalies]
+        end
+    end
 
-    src/app/api/
-    │
-    ├── health/
-    │   └── route.ts ──────────────────────────────────────────────────────────┐
-    │                                                                          │
-    │       GET /api/health                                                    │
-    │       Response: {                                                        │
-    │         status: "operational" | "degraded" | "down",                    │
-    │         corridorsMonitored: number,                                      │
-    │         corridorsHealthy: number,                                        │
-    │         corridorsDegraded: number,                                       │
-    │         corridorsDown: number,                                           │
-    │         transfers24h: number,                                            │
-    │         successRate24h: number,                                          │
-    │         activeAnomalies: number,                                         │
-    │         updatedAt: ISO8601                                               │
-    │       }                                                                  │
-    │                                                                          │
-    ├── flight/                                                                │
-    │   └── route.ts ──────────────────────────────────────────────────────────┤
-    │                                                                          │
-    │       GET /api/flight                                                    │
-    │       Response: {                                                        │
-    │         chains: [{                                                       │
-    │           chain: string,                                                 │
-    │           lfv24h: number,                                                │
-    │           interpretation: LFVInterpretation,                             │
-    │           netFlowUsd: number,                                            │
-    │           alert?: boolean                                                │
-    │         }],                                                              │
-    │         updatedAt: ISO8601                                               │
-    │       }                                                                  │
-    │                                                                          │
-    ├── corridors/                                                             │
-    │   ├── route.ts ──────────────────────────────────────────────────────────┤
-    │   │                                                                      │
-    │   │   GET /api/corridors                                                 │
-    │   │   Query: ?bridge=across&source=ethereum&status=healthy               │
-    │   │   Response: { corridors: Corridor[] }                                │
-    │   │                                                                      │
-    │   └── [id]/                                                              │
-    │       └── route.ts ──────────────────────────────────────────────────────┤
-    │                                                                          │
-    │           GET /api/corridors/:id                                         │
-    │           Response: {                                                    │
-    │             corridor: Corridor,                                          │
-    │             recentTransfers: Transfer[],                                 │
-    │             hourlyStats: HourlyStat[],                                   │
-    │             anomalies: Anomaly[]                                         │
-    │           }                                                              │
-    │                                                                          │
-    ├── impact/                                                                │
-    │   └── estimate/                                                          │
-    │       └── route.ts ──────────────────────────────────────────────────────┤
-    │                                                                          │
-    │           GET /api/impact/estimate                                       │
-    │           Query: ?bridge=across&source=ethereum&dest=arbitrum            │
-    │                  &amountUsd=5000000                                      │
-    │           Response: {                                                    │
-    │             corridorId: string,                                          │
-    │             transferAmountUsd: number,                                   │
-    │             pool: { tvlUsd, utilization },                               │
-    │             impact: { poolSharePct, estimatedSlippageBps,                │
-    │                       impactLevel, warning },                            │
-    │             fragility: { current },                                      │
-    │             corridorHealth: { status, p50, successRate1h },              │
-    │             disclaimer: string                                           │
-    │           }                                                              │
-    │                                                                          │
-    └── anomalies/                                                             │
-        └── route.ts ──────────────────────────────────────────────────────────┘
+    H --> |"Response"| HR["{status, corridorsMonitored,<br/>corridorsHealthy, corridorsDegraded,<br/>corridorsDown, transfers24h,<br/>successRate24h, activeAnomalies}"]
     
-            GET /api/anomalies
-            Query: ?active=true&severity=high
-            Response: { anomalies: Anomaly[] }
+    F --> |"Response"| FR["{chains: [{chain, lfv24h,<br/>interpretation, netFlowUsd, alert?}]}"]
+    
+    C1 --> |"Response"| CR["{corridors: Corridor[]}"]
+    C2 --> |"Response"| CDR["{corridor, recentTransfers,<br/>hourlyStats, anomalies}"]
+    
+    I --> |"Response"| IR["{corridorId, transferAmountUsd,<br/>pool, impact, fragility,<br/>corridorHealth, disclaimer}"]
+    
+    A --> |"Response"| AR["{anomalies: Anomaly[]}"]
 ```
 
 ---
@@ -643,267 +412,186 @@ model Anomaly {
 
 ### 5.1 Client-Side Data Flow
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                      CLIENT-SIDE STATE MANAGEMENT                             │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph SWR["REACT QUERY / SWR"]
+        subgraph Keys["QUERY KEYS"]
+            K1["['health'] → useHealth()"]
+            K2["['flight'] → useFlightVelocity()"]
+            K3["['corridors'] → useCorridors(filters)"]
+            K4["['corridor', id] → useCorridor(id)"]
+            K5["['anomalies'] → useAnomalies(filters)"]
+        end
+        
+        subgraph Cache["CACHE CONFIGURATION"]
+            C1["health: staleTime 30s, refetch 30s"]
+            C2["flight: staleTime 60s, refetch 60s"]
+            C3["corridors: staleTime 30s, refetch 30s"]
+            C4["anomalies: staleTime 15s, refetch 15s"]
+        end
+    end
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │                         REACT QUERY / SWR                                │
-    │                                                                         │
-    │    ┌──────────────────────────────────────────────────────────────┐    │
-    │    │                      QUERY KEYS                              │    │
-    │    │                                                              │    │
-    │    │  ['health']           → useHealth()                         │    │
-    │    │  ['flight']           → useFlightVelocity()                 │    │
-    │    │  ['corridors']        → useCorridors(filters)               │    │
-    │    │  ['corridor', id]     → useCorridor(id)                     │    │
-    │    │  ['anomalies']        → useAnomalies(filters)               │    │
-    │    │                                                              │    │
-    │    └──────────────────────────────────────────────────────────────┘    │
-    │                                │                                        │
-    │                                ▼                                        │
-    │    ┌──────────────────────────────────────────────────────────────┐    │
-    │    │                   CACHE CONFIGURATION                        │    │
-    │    │                                                              │    │
-    │    │  health:      staleTime: 30s,  refetchInterval: 30s        │    │
-    │    │  flight:      staleTime: 60s,  refetchInterval: 60s        │    │
-    │    │  corridors:   staleTime: 30s,  refetchInterval: 30s        │    │
-    │    │  anomalies:   staleTime: 15s,  refetchInterval: 15s        │    │
-    │    │                                                              │    │
-    │    └──────────────────────────────────────────────────────────────┘    │
-    │                                                                         │
-    └─────────────────────────────────────────────────────────────────────────┘
-                                     │
-                                     ▼
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │                        WEBSOCKET LAYER                                   │
-    │                      (Real-time Updates)                                │
-    │                                                                         │
-    │    Events:                                                              │
-    │    • transfer:new       → Invalidate ['corridors']                     │
-    │    • transfer:complete  → Invalidate ['corridors'], ['health']         │
-    │    • anomaly:new        → Invalidate ['anomalies'], ['health']         │
-    │    • anomaly:resolved   → Invalidate ['anomalies']                     │
-    │                                                                         │
-    └─────────────────────────────────────────────────────────────────────────┘
-                                     │
-                                     ▼
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │                       COMPONENT TREE                                     │
-    │                                                                         │
-    │    <Dashboard>                                                          │
-    │      │                                                                  │
-    │      ├── <HealthSummary />      ◄── useHealth()                        │
-    │      │                                                                  │
-    │      ├── <FlightVelocity />     ◄── useFlightVelocity()                │
-    │      │                                                                  │
-    │      ├── <AlertList />          ◄── useAnomalies({ active: true })     │
-    │      │                                                                  │
-    │      ├── <ImpactCalculator />   ◄── Local state + useMutation          │
-    │      │                                                                  │
-    │      └── <CorridorTable />      ◄── useCorridors()                     │
-    │                                                                         │
-    └─────────────────────────────────────────────────────────────────────────┘
+    subgraph WS["WEBSOCKET LAYER"]
+        E1["transfer:new → Invalidate ['corridors']"]
+        E2["transfer:complete → Invalidate ['corridors'], ['health']"]
+        E3["anomaly:new → Invalidate ['anomalies'], ['health']"]
+        E4["anomaly:resolved → Invalidate ['anomalies']"]
+    end
+
+    subgraph Components["COMPONENT TREE"]
+        Dashboard["Dashboard"]
+        HS["HealthSummary ← useHealth()"]
+        FV["FlightVelocity ← useFlightVelocity()"]
+        AL["AlertList ← useAnomalies"]
+        IC["ImpactCalculator ← Local state + useMutation"]
+        CT["CorridorTable ← useCorridors()"]
+    end
+
+    Keys --> Cache
+    Cache --> WS
+    WS --> Components
+    Dashboard --> HS
+    Dashboard --> FV
+    Dashboard --> AL
+    Dashboard --> IC
+    Dashboard --> CT
 ```
 
 ---
 
 ## 6. Deployment Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                       DEPLOYMENT ARCHITECTURE                                 │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    Internet[("🌐 INTERNET")]
+    
+    subgraph Cloudflare["CLOUDFLARE"]
+        DNS[DNS<br/>corridorscout.com]
+    end
 
-                              ┌─────────────────┐
-                              │    INTERNET     │
-                              └────────┬────────┘
-                                       │
-                                       ▼
-                              ┌─────────────────┐
-                              │   Cloudflare    │
-                              │      DNS        │
-                              │ corridorscout.  │
-                              │      com        │
-                              └────────┬────────┘
-                                       │
-                                       ▼
-    ┌──────────────────────────────────────────────────────────────────────────┐
-    │                            VERCEL                                         │
-    │                                                                          │
-    │    ┌────────────────────────────────────────────────────────────────┐   │
-    │    │                    EDGE NETWORK                                │   │
-    │    │                                                                │   │
-    │    │    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐   │   │
-    │    │    │    Edge      │    │    Edge      │    │    Edge      │   │   │
-    │    │    │   (US-East)  │    │   (EU-West)  │    │  (AP-Tokyo)  │   │   │
-    │    │    └──────────────┘    └──────────────┘    └──────────────┘   │   │
-    │    │                                                                │   │
-    │    └────────────────────────────────────────────────────────────────┘   │
-    │                                    │                                     │
-    │                                    ▼                                     │
-    │    ┌────────────────────────────────────────────────────────────────┐   │
-    │    │                   SERVERLESS FUNCTIONS                         │   │
-    │    │                                                                │   │
-    │    │   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐     │   │
-    │    │   │ /api/    │  │ /api/    │  │ /api/    │  │ /api/    │     │   │
-    │    │   │ health   │  │ flight   │  │corridors │  │ impact   │     │   │
-    │    │   └──────────┘  └──────────┘  └──────────┘  └──────────┘     │   │
-    │    │                                                                │   │
-    │    └────────────────────────────────────────────────────────────────┘   │
-    │                                    │                                     │
-    │    ┌────────────────────────────────────────────────────────────────┐   │
-    │    │                      CRON JOBS                                 │   │
-    │    │                                                                │   │
-    │    │   ┌────────────────────┐    ┌────────────────────┐            │   │
-    │    │   │ /api/cron/         │    │ /api/cron/         │            │   │
-    │    │   │ pool-snapshots     │    │ stuck-detector     │            │   │
-    │    │   │ (every 5 min)      │    │ (every 1 min)      │            │   │
-    │    │   └────────────────────┘    └────────────────────┘            │   │
-    │    │                                                                │   │
-    │    └────────────────────────────────────────────────────────────────┘   │
-    │                                                                          │
-    └───────────────────────────────────────┬──────────────────────────────────┘
-                                            │
-                    ┌───────────────────────┼───────────────────────┐
-                    │                       │                       │
-                    ▼                       ▼                       ▼
-         ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-         │      NEON       │    │    UPSTASH      │    │    ALCHEMY      │
-         │   PostgreSQL    │    │     Redis       │    │      RPC        │
-         │                 │    │                 │    │                 │
-         │ • transfers     │    │ • Event queue   │    │ • ETH Mainnet   │
-         │ • pool_snapshots│    │ • Pub/sub       │    │ • Arbitrum      │
-         │ • anomalies     │    │ • Rate limiting │    │ • Optimism      │
-         │                 │    │                 │    │ • Base          │
-         │ Region: US-East │    │ Region: Global  │    │ • Polygon       │
-         │                 │    │                 │    │                 │
-         └─────────────────┘    └─────────────────┘    └─────────────────┘
+    subgraph Vercel["VERCEL"]
+        subgraph Edge["EDGE NETWORK"]
+            E1[Edge US-East]
+            E2[Edge EU-West]
+            E3[Edge AP-Tokyo]
+        end
+        
+        subgraph Functions["SERVERLESS FUNCTIONS"]
+            F1["/api/health"]
+            F2["/api/flight"]
+            F3["/api/corridors"]
+            F4["/api/impact"]
+        end
+        
+        subgraph Cron["CRON JOBS"]
+            CR1["/api/cron/pool-snapshots<br/>(every 5 min)"]
+            CR2["/api/cron/stuck-detector<br/>(every 1 min)"]
+        end
+    end
+
+    subgraph External["EXTERNAL SERVICES"]
+        Neon[(NEON PostgreSQL<br/>• transfers<br/>• pool_snapshots<br/>• anomalies<br/>Region: US-East)]
+        Upstash[(UPSTASH Redis<br/>• Event queue<br/>• Pub/sub<br/>• Rate limiting<br/>Region: Global)]
+        Alchemy[ALCHEMY RPC<br/>• ETH Mainnet<br/>• Arbitrum<br/>• Optimism<br/>• Base<br/>• Polygon]
+    end
+
+    Internet --> DNS
+    DNS --> Edge
+    Edge --> Functions
+    Functions --> Neon
+    Functions --> Upstash
+    Cron --> Neon
+    Cron --> Alchemy
 ```
 
 ---
 
 ## 7. Error Handling Strategy
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                      ERROR HANDLING STRATEGY                                  │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph RPC["RPC TIMEOUT"]
+        R1[RPC Call Fails] --> R2{Retry<br/>3x with backoff}
+        R2 -->|Success| R3[Continue]
+        R2 -->|All failed| R4[Fallback RPC]
+        R4 --> R5[Use cached data<br/>Mark stale]
+    end
 
-    ERROR TYPE              HANDLING                    USER IMPACT
-    ─────────────────────────────────────────────────────────────────────────────
-    
-    RPC Timeout             Retry 3x with backoff       None (transparent)
-         │                  Then skip event             
-         │                  Log to error tracking       
-         ▼                                              
-    ┌─────────────┐                                     
-    │   RETRY     │──────▶ Success? ──▶ Continue       
-    │  MECHANISM  │                                     
-    └──────┬──────┘                                     
-           │                                            
-           ▼ (all retries failed)                       
-    ┌─────────────┐                                     
-    │  FALLBACK   │──────▶ Use cached data             
-    │    RPC      │        Mark stale                  
-    └─────────────┘                                     
-    
-    ─────────────────────────────────────────────────────────────────────────────
-    
-    Database Error          Retry once                  Brief stale data
-         │                  If persists, return         
-         │                  cached response             
-         ▼                                              
-    ┌─────────────┐                                     
-    │   CIRCUIT   │──────▶ Open after 5 failures      
-    │   BREAKER   │        Half-open after 30s        
-    └─────────────┘        Close on success           
-    
-    ─────────────────────────────────────────────────────────────────────────────
-    
-    Missing Transfer        Log warning                 None
-    Match                   Store orphan completion     
-         │                  Alert if pattern emerges   
-         ▼                                              
-    ┌─────────────┐                                     
-    │  ORPHAN     │──────▶ Retry match after 5min     
-    │   QUEUE     │        Discard after 1hr          
-    └─────────────┘                                     
-    
-    ─────────────────────────────────────────────────────────────────────────────
-    
-    API Rate Limit          Queue request               Slight delay
-         │                  429 response                
-         ▼                                              
-    ┌─────────────┐                                     
-    │   RATE      │──────▶ Exponential backoff        
-    │  LIMITER    │        Max 100 req/min/IP         
-    └─────────────┘                                     
+    subgraph DB["DATABASE ERROR"]
+        D1[DB Call Fails] --> D2{Retry once}
+        D2 -->|Success| D3[Continue]
+        D2 -->|Failed| D4[Circuit Breaker]
+        D4 --> D5[Open after 5 failures<br/>Half-open after 30s<br/>Close on success]
+        D5 --> D6[Return cached response]
+    end
+
+    subgraph Match["MISSING TRANSFER MATCH"]
+        M1[Completion without<br/>Initiation] --> M2[Log warning<br/>Store orphan]
+        M2 --> M3[Orphan Queue]
+        M3 --> M4[Retry match after 5min<br/>Discard after 1hr]
+        M2 --> M5[Alert if pattern emerges]
+    end
+
+    subgraph Rate["API RATE LIMIT"]
+        L1[Rate Limit Hit] --> L2[Queue request<br/>429 response]
+        L2 --> L3[Rate Limiter]
+        L3 --> L4[Exponential backoff<br/>Max 100 req/min/IP]
+    end
 ```
+
+**Impact Summary:**
+
+| Error Type | Handling | User Impact |
+|------------|----------|-------------|
+| RPC Timeout | Retry 3x → Fallback → Cache | None (transparent) |
+| Database Error | Retry → Circuit breaker → Cache | Brief stale data |
+| Missing Match | Orphan queue → Retry → Discard | None |
+| API Rate Limit | Queue → Backoff | Slight delay |
 
 ---
 
 ## 8. Monitoring & Observability
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                     MONITORING STRATEGY                                       │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Metrics["METRICS"]
+        subgraph System["System Health"]
+            S1["API response time (p50, p90, p99)"]
+            S2["Error rate by endpoint"]
+            S3["Active WebSocket connections"]
+            S4["Database query latency"]
+        end
+        
+        subgraph Business["Business Metrics"]
+            B1["Transfers processed per minute"]
+            B2["Match rate (completions to initiations)"]
+            B3["Anomalies detected per hour"]
+            B4["API calls by endpoint"]
+        end
+    end
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │                          METRICS                                        │
-    │                                                                         │
-    │    System Health:                                                       │
-    │    • API response time (p50, p90, p99)                                 │
-    │    • Error rate by endpoint                                            │
-    │    • Active WebSocket connections                                      │
-    │    • Database query latency                                            │
-    │                                                                         │
-    │    Business Metrics:                                                    │
-    │    • Transfers processed per minute                                    │
-    │    • Match rate (completions matched to initiations)                   │
-    │    • Anomalies detected per hour                                       │
-    │    • API calls by endpoint                                             │
-    │                                                                         │
-    └─────────────────────────────────────────────────────────────────────────┘
-    
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │                          ALERTS                                         │
-    │                                                                         │
-    │    Critical (Page immediately):                                        │
-    │    • API error rate > 5% for 5 minutes                                 │
-    │    • No transfers processed for 15 minutes                             │
-    │    • Database unreachable                                              │
-    │                                                                         │
-    │    Warning (Slack notification):                                       │
-    │    • Match rate drops below 95%                                        │
-    │    • RPC errors spike                                                  │
-    │    • Unusual traffic patterns                                          │
-    │                                                                         │
-    └─────────────────────────────────────────────────────────────────────────┘
-    
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │                         LOGGING                                         │
-    │                                                                         │
-    │    Levels:                                                              │
-    │    • ERROR:  Failures requiring attention                              │
-    │    • WARN:   Unexpected but handled situations                         │
-    │    • INFO:   Key business events (transfer processed)                  │
-    │    • DEBUG:  Detailed flow (disabled in prod)                          │
-    │                                                                         │
-    │    Structured Format:                                                   │
-    │    {                                                                    │
-    │      timestamp: ISO8601,                                               │
-    │      level: "INFO",                                                    │
-    │      message: "Transfer completed",                                    │
-    │      transferId: "eth_12345",                                          │
-    │      bridge: "across",                                                 │
-    │      corridor: "ethereum_arbitrum",                                    │
-    │      durationMs: 210000                                                │
-    │    }                                                                    │
-    │                                                                         │
-    └─────────────────────────────────────────────────────────────────────────┘
+    subgraph Alerts["ALERTS"]
+        subgraph Critical["Critical (Page immediately)"]
+            C1["API error rate > 5% for 5 min"]
+            C2["No transfers processed for 15 min"]
+            C3["Database unreachable"]
+        end
+        
+        subgraph Warning["Warning (Slack notification)"]
+            W1["Match rate drops below 95%"]
+            W2["RPC errors spike"]
+            W3["Unusual traffic patterns"]
+        end
+    end
+
+    subgraph Logging["LOGGING"]
+        L1["ERROR: Failures requiring attention"]
+        L2["WARN: Unexpected but handled"]
+        L3["INFO: Key business events"]
+        L4["DEBUG: Detailed flow (disabled in prod)"]
+        
+        Format["Structured Format:<br/>{timestamp, level, message,<br/>transferId, bridge, corridor, durationMs}"]
+    end
 ```
 
 ---
