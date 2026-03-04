@@ -316,36 +316,44 @@ model Anomaly {
 classDiagram
     class BaseScout {
         <<abstract>>
-        #rpcProvider: Provider
+        #rpcProviders: Map~ChainName, Provider~
         #redis: RedisClient
-        #chains: ChainConfig[]
+        #chains: ChainName[]
         #isRunning: boolean
+        #eventListeners: Array~cleanup~
         +start()* Promise~void~
         +stop()* Promise~void~
-        #parseEvent(log)* Event
+        +getContractAddress(chain)* string
+        #parseDepositEvent(log, chainId)* TransferEvent|null
+        #parseFillEvent(log, chainId)* TransferEvent|null
         #emit(event) void
-        #getTransferId() string
-        #normalizeAmount() bigint
+        #generateTransferId(chainId, identifier) string
+        #normalizeAmount(rawAmount) string
+        #getSizeBucket(amountUsd) TransferSizeBucket
     }
 
     class AcrossScout {
         Contract: SpokePool
         Events: V3FundsDeposited, FilledV3Relay
         Chains: ETH, ARB, OPT, BASE
-        TransferId: origin_depositId
+        TransferId: originChainId_depositId
         +start() Promise~void~
         +stop() Promise~void~
-        #parseEvent(log) Event
+        +getContractAddress(chain) string
+        #parseDepositEvent(log, chainId) TransferEvent|null
+        #parseFillEvent(log, chainId) TransferEvent|null
     }
 
     class CCTPScout {
         Contract: TokenMessenger, MessageTransmitter
         Events: DepositForBurn, MessageReceived
         Chains: ETH, ARB, OPT, BASE, AVAX
-        TransferId: source_nonce
+        TransferId: sourceDomain_nonce
         +start() Promise~void~
         +stop() Promise~void~
-        #parseEvent(log) Event
+        +getContractAddress(chain) string
+        #parseDepositEvent(log, chainId) TransferEvent|null
+        #parseFillEvent(log, chainId) TransferEvent|null
     }
 
     class StargateScout {
@@ -355,7 +363,9 @@ classDiagram
         TransferId: chainId_txHash
         +start() Promise~void~
         +stop() Promise~void~
-        #parseEvent(log) Event
+        +getContractAddress(chain) string
+        #parseDepositEvent(log, chainId) TransferEvent|null
+        #parseFillEvent(log, chainId) TransferEvent|null
     }
 
     BaseScout <|-- AcrossScout
