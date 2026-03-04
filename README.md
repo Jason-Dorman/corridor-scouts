@@ -140,6 +140,9 @@ npm run test:unit
 
 # Run tests with coverage report
 npm run test:coverage
+
+# Run typecheck to verify classes compile
+npm run typecheck
 ```
 
 ### Smoke Test
