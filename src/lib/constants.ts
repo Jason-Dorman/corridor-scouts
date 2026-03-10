@@ -76,6 +76,47 @@ export const ACROSS_SPOKEPOOL_ADDRESSES: Partial<Record<ChainName, string>> = {
 };
 
 // ---------------------------------------------------------------------------
+// CCTP V1 Contracts & Domain Mappings (UPDATED-SPEC.md "Add CCTP (Week 3)")
+// ---------------------------------------------------------------------------
+
+/**
+ * CCTP domain number per chain.
+ * Used to construct CCTP transfer IDs: {sourceDomain}_{nonce} (docs/DATA-MODEL.md §13.1).
+ * Source: https://developers.circle.com/stablecoins/docs/supported-domains
+ */
+export const CCTP_DOMAINS: Partial<Record<ChainName, number>> = {
+  ethereum: 0,
+  avalanche: 1,
+  optimism: 2,
+  arbitrum: 3,
+  base: 6,
+} as const;
+
+/**
+ * CCTP V1 TokenMessenger addresses per chain (initiation contract — emits DepositForBurn).
+ * Verify at https://developers.circle.com/stablecoins/docs/evm-smart-contracts before deploying.
+ */
+export const CCTP_TOKEN_MESSENGER_ADDRESSES: Partial<Record<ChainName, string>> = {
+  ethereum: '0xBd3fa81B58Ba92a82136038B25aDec7066af3155',
+  arbitrum: '0x19330d10D9Cc8751218eaf51E8885D058642E08A',
+  optimism: '0x2B4069517957735bE00ceE0fadAE88a26365528f',
+  base: '0x1682Ae6375C4E4A97e4B583BC394c861A46D8962',
+  avalanche: '0x6B25532e1060CE10cc3B0A99e5683b91BFDe6982',
+};
+
+/**
+ * CCTP V1 MessageTransmitter addresses per chain (completion contract — emits MessageReceived).
+ * Verify at https://developers.circle.com/stablecoins/docs/evm-smart-contracts before deploying.
+ */
+export const CCTP_MESSAGE_TRANSMITTER_ADDRESSES: Partial<Record<ChainName, string>> = {
+  ethereum: '0x0a992d191DEeC32aFe36203Ad87D7d289a738F81',
+  arbitrum: '0xC30362313FBBA5cf9163F0bb16a0e01f01A896ca',
+  optimism: '0x4d41f22c5a0e5c74090899e5a8Fb597a8842b3e8',
+  base: '0xAD09780d193884d503182aD4588450C416D6F9D4',
+  avalanche: '0x8186359aF5F57FbB40c6b14A588d2A59C0C29880',
+};
+
+// ---------------------------------------------------------------------------
 // Transfer Size Buckets (docs/DATA-MODEL.md §3)
 // ---------------------------------------------------------------------------
 
