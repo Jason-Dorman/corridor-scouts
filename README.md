@@ -153,6 +153,9 @@ Validates that all infrastructure dependencies are reachable (Postgres, Redis, A
 
 ```bash
 npm run smoke-test
+
+# cctp live test
+npm run cctp-replay
 ```
 
 Each check prints a pass/fail result:

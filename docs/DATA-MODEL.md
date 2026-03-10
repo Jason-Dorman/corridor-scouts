@@ -898,6 +898,19 @@ function calculateSuccessRate(
 | CCTP | `{sourceDomain}_{nonce}` | `0_67890` |
 | Stargate | `{chainId}_{txHash}` | `1_0xabc...` |
 
+#### CCTP completion events
+
+`MessageReceived` on the MessageTransmitter does not carry `burnToken` or `amount`. Completion `TransferEvent` payloads set these fields to explicit sentinel values rather than making them optional (which would complicate every consumer):
+
+| Field | Sentinel | Rationale |
+|-------|----------|-----------|
+| `tokenAddress` | `0x0000000000000000000000000000000000000000` | Zero address — unambiguous EVM convention for "not present" |
+| `amount` | `0n` | Processor already has the real amount from the stored initiation record |
+
+The transfer processor identifies these sentinel values on match and uses the initiation record's values for storage.
+
+---
+
 ### 13.2 Corridor ID Format
 
 ```
