@@ -138,15 +138,33 @@ Issues identified during the Phase 0 code review (through prompt 3.3). Issues #1
 
 ---
 
-### #7 — Dead bridge entries in `STUCK_THRESHOLDS_SECONDS` and `SLIPPAGE_FACTORS`
+### #7 — Wormhole and LayerZero are NOT ready to build for
 
-**File:** `src/lib/constants.ts`
+**Files:** `src/lib/constants.ts`, `docs/DATA-MODEL.md`
 
-**Issue:** Both maps include `wormhole` and `layerzero` keys that are not in `BRIDGES`. They will never be used and the `Record<string, number>` type means typos in callers silently return `undefined` instead of a type error.
+**Issue:** `DATA-MODEL.md` includes wormhole and layerzero in several maps (`STUCK_THRESHOLDS_SECONDS`, `SLIPPAGE_FACTORS`). These entries do not correspond to any implemented or verified integration. Building toward them has caused repeated false starts — the stuck-detector was nearly shipped with 5-bridge thresholds when only 3 bridges are live.
 
-**Fix:** Remove the dead entries. Type both maps as `Record<BridgeName, number>` so the TypeScript compiler catches any unsupported bridge name at the call site.
+**Why they're blocked:**
+- No contract addresses identified or verified for either protocol
+- No scout implementation exists (not even a stub)
+- No event ABIs defined
+- No chain support matrix confirmed
 
-**Priority:** Low — no runtime impact, but misleading.
+**Current state in `constants.ts`:**
+- `STUCK_THRESHOLDS_SECONDS` — typed `Record<BridgeName, number>` with only `across`, `cctp`, `stargate`. Wormhole/layerzero correctly excluded.
+- `SLIPPAGE_FACTORS` — same: only 3 bridges, typed `Record<BridgeName, number>`.
+- Any future attempt to add wormhole/layerzero will require changing `BridgeName`, which is intentionally gated behind `BRIDGES` in constants.ts.
+
+**What to do when ready to add a new bridge:**
+1. Add the bridge name to `BRIDGES` in `constants.ts` — this widens `BridgeName`
+2. Add contract addresses (verified against official docs)
+3. Add to `STUCK_THRESHOLDS_SECONDS`, `SLIPPAGE_FACTORS`, `BRIDGE_CHAINS`
+4. Create scout file in `src/scouts/`
+5. Follow `docs/PROMPTS.md` for the full scout build sequence
+
+**Do not add wormhole or layerzero to any constant or implementation until Step 2 is complete.**
+
+**Priority:** Blocking — do not implement until addresses are verified.
 
 ---
 
