@@ -142,14 +142,31 @@ export const SIZE_BUCKET_THRESHOLDS = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Stuck Transfer Detection (docs/DATA-MODEL.md §4.1)
+// Stuck Transfer Detection (docs/DATA-MODEL.md §6.1)
 // ---------------------------------------------------------------------------
 
+/**
+ * Stuck threshold per bridge in seconds (DATA-MODEL.md §6.1).
+ *
+ * Only includes bridges with verified, active (or paused-but-known) scouts.
+ * Add wormhole / layerzero here once those bridge addresses are verified.
+ */
 export const STUCK_THRESHOLDS_SECONDS: Record<BridgeName, number> = {
-  across: 30 * 60,    // 30 minutes
-  cctp: 45 * 60,      // 45 minutes
-  stargate: 30 * 60,  // 30 minutes
+  across: 30 * 60,    // 1800 seconds
+  cctp: 45 * 60,      // 2700 seconds
+  stargate: 30 * 60,  // 1800 seconds
 };
+
+/**
+ * Severity thresholds for stuck-transfer anomalies (DATA-MODEL.md §9.4).
+ *   amountUsd < MEDIUM  → 'low'
+ *   amountUsd >= MEDIUM → 'medium'
+ *   amountUsd >= HIGH   → 'high'
+ */
+export const STUCK_SEVERITY_THRESHOLDS = {
+  MEDIUM: 100_000,    // $100K
+  HIGH: 1_000_000,   // $1M
+} as const;
 
 // ---------------------------------------------------------------------------
 // Fragility Thresholds (docs/DATA-MODEL.md §5.3)

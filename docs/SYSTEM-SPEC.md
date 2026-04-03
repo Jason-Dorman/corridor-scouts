@@ -6,6 +6,20 @@
 
 ---
 
+## Bridge Implementation Status
+
+| Bridge | Status | Scout | Notes |
+|--------|--------|-------|-------|
+| Across | ✅ Active | `src/scouts/across.ts` | Fully implemented |
+| CCTP | ✅ Active | `src/scouts/cctp.ts` | Fully implemented |
+| Stargate | ⏸ On Hold | `src/scouts/stargate.ts` | Addresses unverified — see `docs/AUDIT.md` |
+| Wormhole | 🚫 Not Started | — | No addresses, no scout, no ABIs. Do not build. |
+| LayerZero | 🚫 Not Started | — | No addresses, no scout, no ABIs. Do not build. |
+
+**Rule:** Only bridges with ✅ status should appear in `BRIDGES`, `STUCK_THRESHOLDS_SECONDS`, `SLIPPAGE_FACTORS`, or any other constant map. Adding a bridge to `DATA-MODEL.md` does not mean it is ready to implement — that doc describes the eventual target, not the current build scope. See `docs/AUDIT.md #7` for the full gate criteria.
+
+---
+
 ## 1. System Overview
 
 ### 1.1 High-Level Architecture
