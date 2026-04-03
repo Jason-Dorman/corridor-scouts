@@ -216,6 +216,34 @@ export const ANOMALY_THRESHOLDS = {
   LATENCY_SPIKE_MULTIPLIER: 3,  // current p90 > 3x historical p90
   FAILURE_RATE_THRESHOLD: 10,   // > 10% failure rate in last hour
   LIQUIDITY_DROP_THRESHOLD: 15, // > 15% TVL drop in 24 hours
+  MIN_SAMPLE_SIZE: 5,           // minimum samples for p90/rate to be statistically meaningful
+  MAX_TRANSFER_QUERY_ROWS: 50_000, // hard cap on bulk transfer query to prevent OOM
+} as const;
+
+/**
+ * Per-type severity thresholds for anomaly records (DATA-MODEL.md §9.4).
+ *
+ * Each type has MEDIUM and HIGH watermarks. Anything above the detection
+ * threshold but below MEDIUM is 'low'; MEDIUM ≤ x < HIGH is 'medium'; ≥ HIGH
+ * is 'high'.
+ *
+ *   Latency Spike  : multiplier 3-5x → low | 5-10x → medium | ≥ 10x → high
+ *   Failure Cluster: rate 10-20% → low    | 20-40% → medium | > 40% → high
+ *   Liquidity Drop : drop 15-25% → low    | 25-40% → medium | > 40% → high
+ */
+export const ANOMALY_SEVERITY_THRESHOLDS = {
+  LATENCY_SPIKE: {
+    MEDIUM: 5,  // multiplier ≥ 5 → medium
+    HIGH: 10,   // multiplier ≥ 10 → high
+  },
+  FAILURE_CLUSTER: {
+    MEDIUM: 20, // rate > 20% → medium
+    HIGH: 40,   // rate > 40% → high
+  },
+  LIQUIDITY_DROP: {
+    MEDIUM: 25, // drop > 25% → medium
+    HIGH: 40,   // drop > 40% → high
+  },
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -237,6 +265,7 @@ export const TIME_WINDOWS = {
   ONE_HOUR: 3600,
   TWENTY_FOUR_HOURS: 86400,
   SEVEN_DAYS: 604800,
+  CRON_INTERVAL: 900, // 15 minutes — anomaly-detector cron schedule (vercel.json)
 } as const;
 
 // ---------------------------------------------------------------------------
