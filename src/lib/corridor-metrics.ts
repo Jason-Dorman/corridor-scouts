@@ -60,8 +60,8 @@ export interface CorridorMetrics {
   metrics: {
     transferCount1h: number;
     transferCount24h: number;
-    successRate1h: number;
-    successRate24h: number;
+    successRate1h: number | null;
+    successRate24h: number | null;
     /** null when no completed transfers with duration data in the last hour */
     p50DurationSeconds: number | null;
     /** null when no completed transfers with duration data in the last hour */
@@ -84,8 +84,8 @@ export interface CorridorDataResult {
   corridors: CorridorMetrics[];
   /** Total transfer count across all corridors in the last 24 hours. */
   totalTransfers24h: number;
-  /** Overall success rate across all corridors in last 24h, rounded to 1 decimal. */
-  overallSuccessRate24h: number;
+  /** Overall success rate across all corridors in last 24h. Null when no transfers have resolved. */
+  overallSuccessRate24h: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +201,8 @@ export async function fetchAllCorridorMetrics(): Promise<CorridorDataResult> {
   let totalComp24h = 0;
   let totalFail24h = 0;
   let totalStuck24h = 0;
-  let totalTransfers24h = 0;
+  let totalTransfers24h = 0;   // all transfers (including pending)
+  let totalResolved24h = 0;    // completed + failed + stuck (denominator for success rate)
 
   const corridors: CorridorMetrics[] = [];
 
@@ -216,7 +217,7 @@ export async function fetchAllCorridorMetrics(): Promise<CorridorDataResult> {
     const fail1h = t1h.filter(t => t.status === 'failed').length;
     const stuck1h = t1h.filter(t => t.status === 'stuck').length;
     const dur1h = t1h
-      .filter(t => t.durationSeconds != null)
+      .filter(t => t.status === 'completed' && t.durationSeconds != null)
       .map(t => t.durationSeconds as number);
 
     // 24h aggregates
@@ -229,6 +230,7 @@ export async function fetchAllCorridorMetrics(): Promise<CorridorDataResult> {
     totalFail24h += fail24h;
     totalStuck24h += stuck24h;
     totalTransfers24h += t24h.length;
+    totalResolved24h += comp24h + fail24h + stuck24h;
 
     // 7d completed durations for historical p90 baseline
     const dur7d = transfers
@@ -279,8 +281,9 @@ export async function fetchAllCorridorMetrics(): Promise<CorridorDataResult> {
       metrics: {
         transferCount1h: t1h.length,
         transferCount24h: t24h.length,
-        successRate1h: round2(sr1h),
-        successRate24h: round2(sr24h),
+        // null when no transfers have resolved — avoids phantom 100% from successRate(0,0,0)
+        successRate1h: (comp1h + fail1h + stuck1h) === 0 ? null : round2(sr1h),
+        successRate24h: (comp24h + fail24h + stuck24h) === 0 ? null : round2(sr24h),
         // null when no duration data — 0 would be indistinguishable from "instant"
         p50DurationSeconds: dur1h.length > 0 ? Math.round(p50) : null,
         p90DurationSeconds: dur1h.length > 0 ? Math.round(currentP90) : null,
@@ -288,7 +291,7 @@ export async function fetchAllCorridorMetrics(): Promise<CorridorDataResult> {
       },
       pool: {
         tvlUsd: round2(tvlUsd),
-        utilization: round2(util),
+        utilization: Math.round(util),
         fragility: fragility.level,
         fragilityReason: fragility.reason,
         availableLiquidity: round2(avail),
@@ -297,7 +300,9 @@ export async function fetchAllCorridorMetrics(): Promise<CorridorDataResult> {
     });
   }
 
-  const overallSuccessRate24h = round2(successRate(totalComp24h, totalFail24h, totalStuck24h));
+  const overallSuccessRate24h = totalResolved24h === 0
+    ? null
+    : round2(successRate(totalComp24h, totalFail24h, totalStuck24h));
 
   return { corridors, totalTransfers24h, overallSuccessRate24h };
 }

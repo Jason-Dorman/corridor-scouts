@@ -6,8 +6,11 @@
  * Response schema: docs/API-SPEC.md HealthResponse
  * Response format: UPDATED-SPEC.md "GET /api/health" (flat — no data wrapper)
  * Health status formula: docs/DATA-MODEL.md §8
- * Rounding: successRate24h to 1 decimal per DATA-MODEL.md §12
- * Cache: 30 seconds via Redis (graceful fallback if Redis is unavailable)
+ * Rounding: successRate24h to 2 decimals per DATA-MODEL.md §12
+ * Cache: 60 seconds via shared corridor-metrics Redis cache (graceful fallback
+ *   if Redis is unavailable). 60s is preferred over 30s because health is derived
+ *   from 1h windows and pool snapshots are taken every 5 minutes — the marginal
+ *   freshness gain does not justify doubling DB load.
  */
 
 import { NextResponse } from 'next/server';
@@ -98,8 +101,8 @@ async function computeHealth(metricsResult: CorridorDataResult) {
     corridorsDegraded,
     corridorsDown,
     transfers24h: totalTransfers24h,
-    // null when no transfers in window — indicates no data rather than perfect success
-    successRate24h: totalTransfers24h === 0 ? null : overallSuccessRate24h,
+    // null when no transfers have resolved — avoids phantom 100% with only pending transfers
+    successRate24h: overallSuccessRate24h,
     activeAnomalies: activeAnomalyCount,
     updatedAt: now.toISOString(),
   };

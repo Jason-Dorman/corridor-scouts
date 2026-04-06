@@ -23,7 +23,7 @@ import { calculateImpact, IMPACT_DISCLAIMER } from '../../../../calculators/impa
 import { calculateFragility } from '../../../../calculators/fragility';
 import { calculateHealthStatus } from '../../../../calculators/health';
 import { calculatePercentile } from '../../../../lib/corridor-metrics';
-import { round2 } from '../../../../lib/round';
+import { round1, round2 } from '../../../../lib/round';
 import { logger } from '../../../../lib/logger';
 import { ANOMALY_THRESHOLDS, VALID_BRIDGES, VALID_CHAIN_NAMES, STABLECOINS } from '../../../../lib/constants';
 import type { BridgeName } from '../../../../lib/constants';
@@ -74,14 +74,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000);
 
     // Fetch pool snapshots + corridor transfer data in parallel.
-    // Pool snapshots: fetch all stablecoin pools for this bridge+chain in the 24h window.
-    // A bridge may have multiple pools on the same chain (e.g. USDC + USDT);
-    // aggregating avoids returning data for whichever pool sorts first.
+    // Pool snapshots: fetch both dest and source chains so we can fall back to
+    // source-chain data if dest has no snapshots (matching corridor-metrics.ts).
     const [poolSnapshots24h, transfers7d] = await Promise.all([
       db.poolSnapshot.findMany({
         where: {
           bridge: bridge as BridgeName,
-          chain: dest,
+          chain: { in: [dest, source] },
           asset: { in: [...STABLECOINS] },
           recordedAt: { gte: twentyFourHoursAgo },
         },
@@ -96,11 +95,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }),
     ]);
 
+    // Prefer dest-chain snapshots; fall back to source-chain if dest has no data.
+    // This matches the behaviour of corridor-metrics.ts which also prefers destChain.
+    const destSnaps = poolSnapshots24h.filter(s => s.chain === dest);
+    const relevantSnaps = destSnaps.length > 0
+      ? destSnaps
+      : poolSnapshots24h.filter(s => s.chain === source);
+
     // Aggregate pool snapshots: latest and oldest snapshot per poolId, then sum across pools.
     type SnapRow = (typeof poolSnapshots24h)[0];
     const latestByPool = new Map<string, SnapRow>();
     const oldestByPool = new Map<string, SnapRow>();
-    for (const snap of poolSnapshots24h) {
+    for (const snap of relevantSnaps) {
       if (!latestByPool.has(snap.poolId)) latestByPool.set(snap.poolId, snap);
       oldestByPool.set(snap.poolId, snap);
     }
@@ -157,7 +163,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const fail1h = t1h.filter(t => t.status === 'failed').length;
     const stuck1h = t1h.filter(t => t.status === 'stuck').length;
     const dur1h = t1h
-      .filter(t => t.durationSeconds != null)
+      .filter(t => t.status === 'completed' && t.durationSeconds != null)
       .map(t => t.durationSeconds as number);
     const dur7d = transfers7d
       .filter(t => t.status === 'completed' && t.durationSeconds != null)
@@ -184,12 +190,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       transferAmountUsd: round2(amountUsd),
       pool: {
         tvlUsd: round2(tvlUsd),
-        utilization: round2(utilization),
+        utilization: Math.round(utilization),
         availableLiquidity: round2(availableLiquidity),
       },
       impact: {
         poolSharePct: round2(impactResult.poolSharePct),
-        estimatedSlippageBps: round2(impactResult.estimatedSlippageBps),
+        estimatedSlippageBps: round1(impactResult.estimatedSlippageBps),
         impactLevel: impactResult.impactLevel,
         warning: impactResult.warning,
       },
@@ -203,7 +209,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         // null when no duration data — 0 would be indistinguishable from "instant"
         p50DurationSeconds: dur1h.length > 0 ? Math.round(p50) : null,
         p90DurationSeconds: dur1h.length > 0 ? Math.round(currentP90) : null,
-        successRate1h: t1h.length === 0 ? null : round2(sr1h),
+        successRate1h: (comp1h + fail1h + stuck1h) === 0 ? null : round2(sr1h),
       },
       recommendation,
       disclaimer: IMPACT_DISCLAIMER,

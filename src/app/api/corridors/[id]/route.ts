@@ -171,7 +171,7 @@ export async function GET(
     const comp1h = t1h.filter(t => t.status === 'completed').length;
     const fail1h = t1h.filter(t => t.status === 'failed').length;
     const stuck1h = t1h.filter(t => t.status === 'stuck').length;
-    const dur1h = t1h.filter(t => t.durationSeconds != null).map(t => t.durationSeconds as number);
+    const dur1h = t1h.filter(t => t.status === 'completed' && t.durationSeconds != null).map(t => t.durationSeconds as number);
 
     const comp24h = t24h.filter(t => t.status === 'completed').length;
     const fail24h = t24h.filter(t => t.status === 'failed').length;
@@ -212,9 +212,9 @@ export async function GET(
       metrics: {
         transferCount1h: t1h.length,
         transferCount24h: t24h.length,
-        // null when no transfers in window — signals "no data" rather than perfect success
-        successRate1h: t1h.length === 0 ? null : round2(sr1h),
-        successRate24h: t24h.length === 0 ? null : round2(sr24h),
+        // null when no transfers have resolved — avoids phantom 100% from successRate(0,0,0)
+        successRate1h: (comp1h + fail1h + stuck1h) === 0 ? null : round2(sr1h),
+        successRate24h: (comp24h + fail24h + stuck24h) === 0 ? null : round2(sr24h),
         // null when no duration data — 0 would be indistinguishable from "instant"
         p50DurationSeconds: dur1h.length > 0 ? Math.round(p50) : null,
         p90DurationSeconds: dur1h.length > 0 ? Math.round(currentP90) : null,
@@ -222,7 +222,7 @@ export async function GET(
       },
       pool: {
         tvlUsd: round2(tvlUsd),
-        utilization: round2(util),
+        utilization: Math.round(util),
         availableLiquidity: round2(availableLiquidity),
         fragility: fragility.level,
         fragilityReason: fragility.reason,
@@ -314,14 +314,15 @@ function buildHourlyStats(transfers: TransferRow[], now: Date) {
     const fail = bucket.filter(t => t.status === 'failed').length;
     const stuck = bucket.filter(t => t.status === 'stuck').length;
     const durations = bucket
-      .filter(t => t.durationSeconds != null)
+      .filter(t => t.status === 'completed' && t.durationSeconds != null)
       .map(t => t.durationSeconds as number);
     const vol = bucket.reduce((s, t) => s + (t.amountUsd ? Number(t.amountUsd) : 0), 0);
 
+    const resolved = comp + fail + stuck;
     stats.push({
       hour: bucketStart.toISOString(),
       transferCount: bucket.length,
-      successRate: bucket.length === 0 ? null : round2(successRate(comp, fail, stuck)),
+      successRate: resolved === 0 ? null : round2(successRate(comp, fail, stuck)),
       p50DurationSeconds: durations.length > 0 ? Math.round(calculatePercentile(durations, 50)) : null,
       p90DurationSeconds: durations.length > 0 ? Math.round(calculatePercentile(durations, 90)) : null,
       volumeUsd: round2(vol),
@@ -349,9 +350,10 @@ function buildDailyStats(transfers: TransferRow[], from: Date) {
       const fail = bucket.filter(t => t.status === 'failed').length;
       const stuck = bucket.filter(t => t.status === 'stuck').length;
       const durations = bucket
-        .filter(t => t.durationSeconds != null)
+        .filter(t => t.status === 'completed' && t.durationSeconds != null)
         .map(t => t.durationSeconds as number);
       const vol = bucket.reduce((s, t) => s + (t.amountUsd ? Number(t.amountUsd) : 0), 0);
+      const resolved = comp + fail + stuck;
       const sr = successRate(comp, fail, stuck);
       const avgDuration =
         durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
@@ -359,10 +361,12 @@ function buildDailyStats(transfers: TransferRow[], from: Date) {
       return {
         date,
         transferCount: bucket.length,
-        successRate: bucket.length === 0 ? null : round2(sr),
+        successRate: resolved === 0 ? null : round2(sr),
         avgDurationSeconds: avgDuration,
         volumeUsd: round2(vol),
-        status: dailyStatus(sr),
+        // No resolved transfers → 'down', consistent with health calculator's
+        // transferCount1h === 0 → DOWN rule (DATA-MODEL.md §8.2)
+        status: resolved === 0 ? 'down' as const : dailyStatus(sr),
       };
     });
 }

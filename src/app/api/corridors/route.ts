@@ -181,10 +181,8 @@ function serializeCorridor(c: CorridorMetrics) {
     status: c.status,
     metrics: {
       ...c.metrics,
-      // Return null instead of 100 when there are no transfers — 100% with zero
-      // samples is misleading; null signals "no data" to consumers.
-      successRate1h: c.metrics.transferCount1h === 0 ? null : c.metrics.successRate1h,
-      successRate24h: c.metrics.transferCount24h === 0 ? null : c.metrics.successRate24h,
+      // successRate fields are already null when no transfers have resolved
+      // (set in corridor-metrics.ts) — no additional null-guarding needed here.
     },
     pool: {
       tvlUsd: c.pool.tvlUsd,

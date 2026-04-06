@@ -1,10 +1,16 @@
 /**
- * Shared rounding utility for API response serialization.
+ * Shared rounding utilities for API response serialization.
  *
- * Rule: all numeric values displayed in API responses are rounded to 2 decimal
- * places. Internal calculations must NOT round intermediate values — only apply
+ * Internal calculations must NOT round intermediate values — only apply
  * rounding at the final serialization step.
  */
+
+/** Round to 1 decimal place. Used for estimatedSlippageBps. */
+export function round1(v: number): number {
+  return Math.round(v * 10) / 10;
+}
+
+/** Round to 2 decimal places. Used for most USD values, percentages. */
 export function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }

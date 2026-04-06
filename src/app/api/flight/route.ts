@@ -149,6 +149,7 @@ async function computeFlight() {
       return {
         chain,
         lfv24h: round3(lfv.lfv24h),
+        lfvAnnualized: round2(lfv.lfvAnnualized),
         interpretation: lfv.interpretation,
         netFlowUsd: round2(lfv.netFlowUsd),
         tvlStartUsd: round2(lfv.tvlStartUsd),
