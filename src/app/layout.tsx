@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import { SWRProvider } from '../components/SWRProvider';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const jetbrains = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' });
 
 export const metadata: Metadata = {
   title: 'Corridor Scout',
@@ -15,9 +17,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <html lang="en">
-      <body className={`${inter.className} bg-gray-950 text-gray-100 antialiased`}>
-        {children}
+    <html lang="en" className={`${inter.variable} ${jetbrains.variable}`}>
+      <body className={`${inter.className} bg-void text-lavender antialiased`}>
+        <SWRProvider>{children}</SWRProvider>
       </body>
     </html>
   );
