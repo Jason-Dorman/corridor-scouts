@@ -20,7 +20,8 @@
  * Time windows: DATA-MODEL.md §11.1       (TIME_WINDOWS)
  */
 
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import type { BridgeName } from '../lib/constants';
 
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
@@ -321,7 +322,7 @@ export class AnomalyDetector {
           data: {
             anomalyType: 'latency_spike',
             corridorId,
-            bridge: info.bridge,
+            bridge: info.bridge as BridgeName,
             sourceChain: info.sourceChain,
             destChain: info.destChain,
             severity,
@@ -457,7 +458,7 @@ export class AnomalyDetector {
           data: {
             anomalyType: 'failure_cluster',
             corridorId,
-            bridge: info.bridge,
+            bridge: info.bridge as BridgeName,
             sourceChain: info.sourceChain,
             destChain: info.destChain,
             severity,

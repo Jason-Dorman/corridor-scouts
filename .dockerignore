@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env*
+!.env.example
+node_modules
+.next
+*.md
+docs/
+tests/
+scripts/
+.vscode/
+coverage/

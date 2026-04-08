@@ -27,13 +27,34 @@ function createClient(): Redis {
   return new Redis(requireEnv('REDIS_URL'));
 }
 
-export const redis = globalForRedis.redis ?? createClient();
-export const redisSubscriber = globalForRedis.redisSubscriber ?? createClient();
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForRedis.redis = redis;
-  globalForRedis.redisSubscriber = redisSubscriber;
+// Lazy getters — clients are created on first access at runtime, not at
+// module import time. This allows `next build` to import route modules
+// without REDIS_URL being present in the build environment.
+function getRedis(): Redis {
+  if (!globalForRedis.redis) {
+    globalForRedis.redis = createClient();
+  }
+  return globalForRedis.redis;
 }
+
+function getRedisSubscriber(): Redis {
+  if (!globalForRedis.redisSubscriber) {
+    globalForRedis.redisSubscriber = createClient();
+  }
+  return globalForRedis.redisSubscriber;
+}
+
+export const redis: Redis = new Proxy({} as Redis, {
+  get(_target, prop) {
+    return (getRedis() as unknown as Record<string | symbol, unknown>)[prop];
+  },
+});
+
+export const redisSubscriber: Redis = new Proxy({} as Redis, {
+  get(_target, prop) {
+    return (getRedisSubscriber() as unknown as Record<string | symbol, unknown>)[prop];
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Pub/sub helpers
@@ -57,10 +78,18 @@ export async function publish(channel: RedisChannel, message: unknown): Promise<
  */
 const channelHandlers = new Map<string, (raw: string) => void>();
 
-// Register the single top-level dispatcher exactly once at module load.
-redisSubscriber.on('message', (receivedChannel: string, raw: string) => {
-  channelHandlers.get(receivedChannel)?.(raw);
-});
+// Deferred — registered on first subscribe() call, not at module load.
+// This prevents the Proxy from triggering requireEnv('REDIS_URL') during
+// `next build`'s module-import phase.
+let messageListenerRegistered = false;
+
+function ensureMessageListener(): void {
+  if (messageListenerRegistered) return;
+  messageListenerRegistered = true;
+  getRedisSubscriber().on('message', (receivedChannel: string, raw: string) => {
+    channelHandlers.get(receivedChannel)?.(raw);
+  });
+}
 
 /**
  * Subscribe to a Redis channel and invoke `handler` for each message.
@@ -75,8 +104,9 @@ export async function subscribe<T = unknown>(
   channel: RedisChannel,
   handler: (message: T) => void,
 ): Promise<void> {
+  ensureMessageListener();
   if (!channelHandlers.has(channel)) {
-    await redisSubscriber.subscribe(channel);
+    await getRedisSubscriber().subscribe(channel);
   }
   channelHandlers.set(channel, (raw: string) => handler(superjson.parse<T>(raw)));
 }

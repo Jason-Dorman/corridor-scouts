@@ -15,11 +15,12 @@
  * Corridor ID: DATA-MODEL.md §13.2  ({bridge}_{sourceChain}_{destChain})
  */
 
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
 import { STUCK_THRESHOLDS_SECONDS, STUCK_SEVERITY_THRESHOLDS } from '../lib/constants';
+import type { BridgeName } from '../lib/constants';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,7 +112,7 @@ export class StuckDetector {
     const bridgeBreakdown: Record<string, number> = {};
     let detected = 0;
 
-    for (const [bridge, thresholdSeconds] of Object.entries(STUCK_THRESHOLDS_SECONDS)) {
+    for (const [bridge, thresholdSeconds] of Object.entries(STUCK_THRESHOLDS_SECONDS) as [BridgeName, number][]) {
       // Guard: ignore any threshold that was somehow set to a non-positive finite number.
       if (!Number.isFinite(thresholdSeconds) || thresholdSeconds <= 0) {
         logger.warn('[StuckDetector] Ignoring invalid threshold for bridge', {
@@ -232,7 +233,7 @@ export class StuckDetector {
           data: {
             anomalyType: 'stuck_transfer',
             corridorId,
-            bridge: transfer.bridge,
+            bridge: transfer.bridge as BridgeName,
             sourceChain: transfer.sourceChain,
             destChain: transfer.destChain,
             severity,

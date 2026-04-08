@@ -12,6 +12,9 @@ export default defineConfig({
     path: 'prisma/migrations',
   },
   datasource: {
-    url: env('DATABASE_URL'),
+    // process.env is checked first so Docker / CI environment variables are
+    // picked up directly. env() falls back to Prisma's own .env file loading
+    // for local development where DATABASE_URL lives in .env.local.
+    url: process.env.DATABASE_URL ?? env('DATABASE_URL'),
   },
 });
